@@ -1,0 +1,83 @@
+import serial
+import numpy as np
+import cv2
+import time
+
+ser = serial.Serial('COM23', baudrate=115200, timeout=1)
+time.sleep(2)
+
+pos = 90
+
+def nothing(x):
+    pass
+
+cv2.namedWindow('Trackbars')
+cv2.createTrackbar('HueLow', 'Trackbars', 100, 179, nothing)
+cv2.createTrackbar('HueHigh', 'Trackbars', 140, 179, nothing)
+cv2.createTrackbar('SatLow', 'Trackbars', 150, 255, nothing)
+cv2.createTrackbar('SatHigh', 'Trackbars', 255, 255, nothing)
+cv2.createTrackbar('ValLow', 'Trackbars', 50, 255, nothing)
+cv2.createTrackbar('ValHigh', 'Trackbars', 255, 255, nothing)
+
+
+cam = cv2.VideoCapture(3)
+
+while True:
+    success, img = cam.read()
+    if not success:
+        print("Failed to capture image")
+        break
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+
+    hueLow = cv2.getTrackbarPos('HueLow', 'Trackbars')
+    hueHigh = cv2.getTrackbarPos('HueHigh', 'Trackbars')
+    satLow = cv2.getTrackbarPos('SatLow', 'Trackbars')
+    satHigh = cv2.getTrackbarPos('SatHigh', 'Trackbars')
+    valLow = cv2.getTrackbarPos('ValLow', 'Trackbars')
+    valHigh = cv2.getTrackbarPos('ValHigh', 'Trackbars')
+
+
+    FGmask = cv2.inRange(hsv, (hueLow, satLow, valLow), (hueHigh, satHigh, valHigh))
+    cv2.imshow('FGmask', FGmask)
+
+
+    print(f'HueLow: {hueLow}, HueHigh: {hueHigh}, SatLow: {satLow}, SatHigh: {satHigh}, ValLow: {valLow}, ValHigh: {valHigh}')
+
+
+    contours, hierarchy = cv2.findContours(FGmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=lambda x: cv2.contourArea(x), reverse=True)
+
+
+    print(f'Contours detected: {len(contours)}')
+
+    if contours:
+
+        cnt = contours[0]
+        area = cv2.contourArea(cnt)
+        if area > 100:
+            (x, y, w, h) = cv2.boundingRect(cnt)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 3)
+
+
+            errorPan = (x + w / 2) - (640 / 2)
+
+
+            if abs(errorPan) > 20:
+                pos = pos - errorPan / 200  # 調整方向
+
+
+            pos = max(10, min(pos, 170))
+
+
+            servoPos = str(int(pos)) + '\r'
+            ser.write(servoPos.encode())
+            print(f'Servo Position: {pos}')
+
+    cv2.imshow('Frame', img)
+
+    if cv2.waitKey(1) == 27:
+        break
+cam.release()
+cv2.destroyAllWindows()

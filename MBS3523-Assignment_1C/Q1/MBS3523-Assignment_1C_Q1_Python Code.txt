@@ -1,0 +1,43 @@
+import serial
+import cv2
+import time
+
+ser = serial.Serial('COM22', baudrate=9600, timeout=1)
+time.sleep(3)
+
+cap = cv2.VideoCapture(0)
+
+temperature = "N/A"
+humidity = "N/A"
+
+while True:
+    if ser.in_waiting > 0:
+        data = ser.readline().decode('utf-8').strip()
+        print(f"Received data: {data}")
+
+        try:
+            parts = data.split(' ')
+            humidity = parts[1]
+            temperature = parts[3]
+            print(f"Parsed - Temperature: {temperature}, Humidity: {humidity}")
+        except (IndexError, ValueError) as e:
+            print(f"Error parsing data: {e}")
+            temperature = "N/A"
+            humidity = "N/A"
+
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to grab frame")
+        break
+
+    cv2.putText(frame, f'Temperature: {temperature}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    cv2.putText(frame, f'Humidity: {humidity}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+    cv2.imshow('Temperature and Humidity', frame)
+
+    if cv2.waitKey(1) & 0xFF == 27:
+        break
+
+cap.release()
+ser.close()
+cv2.destroyAllWindows()
