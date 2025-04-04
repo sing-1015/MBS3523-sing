@@ -1,0 +1,100 @@
+import cv2
+import numpy as np
+
+confThreshold = 0.8
+
+fruit_prices = {
+    "apple": 1.0,
+    "banana": 0.5,
+    "orange": 0.75
+}
+
+cap = cv2.VideoCapture(0)
+
+classesFile = 'C:/Users/240241059/PycharmProjects/HandTracking/coco80.names'
+classes = []
+with open(classesFile, 'r') as f:
+    classes = f.read().splitlines()
+
+# 加載YOLO模型
+net = cv2.dnn.readNetFromDarknet('C:/Users/240241059/PycharmProjects/HandTracking/yolov3-320.cfg',
+                                  'C:/Users/240241059/PycharmProjects/HandTracking/yolov3-320.weights')
+net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+
+while True:
+    success, img = cap.read()
+    height, width, _ = img.shape
+
+    blob = cv2.dnn.blobFromImage(img, 1 / 255, (320, 320), (0, 0, 0), swapRB=True, crop=False)
+    net.setInput(blob)
+
+    output_layers_names = net.getUnconnectedOutLayersNames()
+    LayerOutputs = net.forward(output_layers_names)
+
+    bboxes = []
+    confidences = []
+    class_ids = []
+    fruit_count = {
+        "apple": 0,
+        "banana": 0,
+        "orange": 0
+    }
+    total_fruits = 0
+    total_price = 0.0
+
+    for output in LayerOutputs:
+        for detection in output:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            if confidence > confThreshold:
+                label = str(classes[class_id])
+
+
+                if label in fruit_prices:
+                    center_x = int(detection[0] * width)
+                    center_y = int(detection[1] * height)
+                    w = int(detection[2] * width)
+                    h = int(detection[3] * height)
+                    x = int(center_x - w / 2)
+                    y = int(center_y - h / 2)
+
+                    bboxes.append([x, y, w, h])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
+
+
+                    fruit_count[label] += 1
+                    total_fruits += 1
+                    total_price += fruit_prices[label]
+
+    indexes = cv2.dnn.NMSBoxes(bboxes, confidences, confThreshold, 0.4)
+    font = cv2.FONT_HERSHEY_PLAIN
+    colors = np.random.uniform(0, 255, size=(len(bboxes), 3))
+
+    if len(indexes) > 0:
+        for i in indexes.flatten():
+            x, y, w, h = bboxes[i]
+            label = str(classes[class_ids[i]])
+            confidence = str(round(confidences[i], 2))
+            color = colors[i]
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(img, f"{label} {confidence}", (x, y + 20), font, 2, (255, 255, 255), 2)
+
+
+    text_position = (width // 2 - 150, 30)
+    cv2.putText(img, f"Apples: {fruit_count['apple']} (${fruit_count['apple'] * fruit_prices['apple']:.2f})", text_position, font, 2, (0, 0, 255), 2)
+    cv2.putText(img, f"Bananas: {fruit_count['banana']} (${fruit_count['banana'] * fruit_prices['banana']:.2f})", (text_position[0], text_position[1] + 30), font, 2, (0,255, 255), 2)
+    cv2.putText(img, f"Oranges: {fruit_count['orange']} (${fruit_count['orange'] * fruit_prices['orange']:.2f})", (text_position[0], text_position[1] + 60), font, 2, (0, 165, 255), 2)
+
+    
+    cv2.putText(img, f"Total Fruits: {total_fruits}", (text_position[0], text_position[1] + 90), font, 2, (255, 0, 0), 2)
+    cv2.putText(img, f"Total Price: ${total_price:.2f}", (text_position[0], text_position[1] + 120), font, 2, (255, 255, 0), 2)
+
+    cv2.imshow('Image', img)
+    if cv2.waitKey(1) & 0xff == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
